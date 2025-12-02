@@ -321,7 +321,7 @@ async function generateDailyArticle(env: Env) {
 You are an HHeuristics research writer.
 Audience: senior executives, investors, and policymakers.
 Tone: analytical, concise, evidence-informed, and non-sensational.
-Style: clear headings, short paragraphs, and concrete takeaways.
+Style: clear section headings and full paragraphs. No bullet points.
 Perspective: neutral, with explicit distinctions between facts, signals, and interpretation.
 `;
 
@@ -330,16 +330,17 @@ Write an approximately 1,200-word article for an executive audience on:
 "${topic}".
 
 Structure:
-- A strong, descriptive title at the top.
 - A 2–3 paragraph introduction.
 - 3–5 subsections with <h2> headings that cover:
-  - current landscape
+  - the current landscape
   - key risks and opportunities
   - practical frameworks or decision heuristics
-- A closing section with 3–5 bullet-point recommendations.
+- A closing section that synthesizes implications and recommendations in paragraph form (no bullets).
 
 Output:
-- Valid HTML fragment containing only <h1>, <h2>, <p>, <ul>, <ol>, and <li> tags.
+- Valid HTML fragment using ONLY <h2> and <p> tags.
+- Do NOT include <h1>, <ul>, <ol>, <li>, or any bullet points or asterisks.
+- Do NOT repeat the title inside the body; the Worker will render the main title separately.
 - Do NOT include <html>, <head>, or <body> tags.
 `;
 
@@ -389,8 +390,11 @@ async function getRecentArticles(
 }
 
 function sanitizeGeneratedHtml(html: string): string {
-  // Strip stray asterisks that sometimes appear from markdown-style bullets.
-  return html.replace(/\*/g, "");
+  // Remove list tags just in case and collapse any leftover bullet markers into spaces.
+  let cleaned = html.replace(/<\/?(ul|ol|li)[^>]*>/gi, "");
+  cleaned = cleaned.replace(/\*/g, "");
+  cleaned = cleaned.replace(/^\s*[-•]\s+/gm, "");
+  return cleaned;
 }
 
 function escapeHtml(str: string): string {
