@@ -115,6 +115,8 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
     return new Response("Article missing.", { status: 500 });
   }
 
+  const bodyHtml = removeTitleFromBody(stored.bodyHtml, stored.title);
+
   const recent = await getRecentArticles(env, 5);
   const recentLinks = recent
     .filter((item) => item.date !== stored.date)
@@ -269,7 +271,7 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
         </div>
       </header>
       <main>
-        ${stored.bodyHtml}
+        ${bodyHtml}
         ${recentSection}
       </main>
     </div>
@@ -318,15 +320,15 @@ async function generateDailyArticle(env: Env) {
   const topic = pickTopicForToday(now);
 
   const systemPrompt = `
-You are an HHeuristics research writer.
-Audience: senior executives, investors, and policymakers.
-Tone: analytical, concise, evidence-informed, and non-sensational.
-Style: clear section headings and full paragraphs. No bullet points.
-Perspective: neutral, with explicit distinctions between facts, signals, and interpretation.
+You are a journalist writing for a curious general audience.
+Audience: general consumers interested in technology, business, and the world around them.
+Tone: clear, friendly, and accessible; avoid jargon and explain terms simply.
+Style: storytelling with concrete examples, short paragraphs, and no bullet points.
+Perspective: neutral and informative (not investment or legal advice).
 `;
 
   const userPrompt = `
-Write an approximately 1,200-word article for an executive audience on:
+Write an approximately 1,200-word article for a general audience on:
 "${topic}".
 
 Structure:
@@ -353,14 +355,14 @@ Output:
   } as any);
 
   const raw = String(response.response ?? "");
-  const cleaned = sanitizeGeneratedHtml(raw);
-  const firstLine = raw.split("\n").find((l) => l.trim().length > 0) ?? "Daily Insight";
+  const cleanedBody = sanitizeGeneratedHtml(raw);
+  const firstLine = cleanedBody.split("\n").find((l) => l.trim().length > 0) ?? "Daily Insight";
   const title = firstLine.replace(/<[^>]*>/g, "").trim();
 
   const article: StoredArticle = {
     key,
     title: title || `Daily Insight – ${today}`,
-    bodyHtml: cleaned,
+    bodyHtml: removeTitleFromBody(cleanedBody, title || `Daily Insight – ${today}`),
     date: today,
     topic,
   };
@@ -395,6 +397,28 @@ function sanitizeGeneratedHtml(html: string): string {
   cleaned = cleaned.replace(/\*/g, "");
   cleaned = cleaned.replace(/^\s*[-•]\s+/gm, "");
   return cleaned;
+}
+
+function removeTitleFromBody(html: string, title: string): string {
+  if (!title) return html;
+  const escapedTitle = escapeRegExp(title.trim());
+
+  // Remove a leading <h1> or <h2> that matches the title.
+  const headingPattern = new RegExp(
+    `<h[12][^>]*>\\s*${escapedTitle}\\s*</h[12]>`,
+    "i"
+  );
+  let cleaned = html.replace(headingPattern, "");
+
+  // Remove a first plain line that exactly matches the title.
+  const plainLinePattern = new RegExp(`^\\s*${escapedTitle}\\s*(\\n|$)`, "i");
+  cleaned = cleaned.replace(plainLinePattern, "");
+
+  return cleaned;
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function escapeHtml(str: string): string {
