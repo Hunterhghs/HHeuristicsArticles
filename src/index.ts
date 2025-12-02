@@ -70,12 +70,20 @@ async function renderLatestArticle(env: Env): Promise<Response> {
       { status: 500 }
     );
   }
-  const latestKey = await env.ARTICLES.get("latest-key");
+  let latestKey = await env.ARTICLES.get("latest-key");
   if (!latestKey) {
-    return new Response(
-      "No article generated yet. The first daily article will appear after the next scheduled run.",
-      { status: 503 }
-    );
+    // If no article exists yet but bindings are configured, generate one immediately.
+    if (env.AI) {
+      await generateDailyArticle(env);
+      latestKey = await env.ARTICLES.get("latest-key");
+    }
+
+    if (!latestKey) {
+      return new Response(
+        "No article generated yet. The first daily article will appear after the next scheduled run.",
+        { status: 503 }
+      );
+    }
   }
   return renderArticleByKey(env, latestKey);
 }
