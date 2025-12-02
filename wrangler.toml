@@ -8,10 +8,6 @@ compatibility_date = "2024-09-01"
 [ai]
 binding = "AI"
 
-[[kv_namespaces]]
-binding = "ARTICLES"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-
 [triggers]
 # Run every day at 09:00 UTC (adjust as needed)
 crons = ["0 9 * * *"]
