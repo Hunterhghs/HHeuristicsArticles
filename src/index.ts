@@ -64,6 +64,12 @@ type StoredArticle = {
 };
 
 async function renderLatestArticle(env: Env): Promise<Response> {
+  if (!env.ARTICLES) {
+    return new Response(
+      "Storage is not configured yet (KV binding 'ARTICLES' is missing). Please add a KV binding named ARTICLES in the Cloudflare dashboard.",
+      { status: 500 }
+    );
+  }
   const latestKey = await env.ARTICLES.get("latest-key");
   if (!latestKey) {
     return new Response(
@@ -75,6 +81,12 @@ async function renderLatestArticle(env: Env): Promise<Response> {
 }
 
 async function renderArticleByDate(env: Env, date: string): Promise<Response> {
+  if (!env.ARTICLES) {
+    return new Response(
+      "Storage is not configured yet (KV binding 'ARTICLES' is missing). Please add a KV binding named ARTICLES in the Cloudflare dashboard.",
+      { status: 500 }
+    );
+  }
   const key = `article:${date}`;
   const exists = await env.ARTICLES.get(key);
   if (!exists) {
@@ -84,6 +96,12 @@ async function renderArticleByDate(env: Env, date: string): Promise<Response> {
 }
 
 async function renderArticleByKey(env: Env, key: string): Promise<Response> {
+  if (!env.ARTICLES) {
+    return new Response(
+      "Storage is not configured yet (KV binding 'ARTICLES' is missing). Please add a KV binding named ARTICLES in the Cloudflare dashboard.",
+      { status: 500 }
+    );
+  }
   const stored = await env.ARTICLES.get<StoredArticle>(key, "json");
   if (!stored) {
     return new Response("Article missing.", { status: 500 });
@@ -191,6 +209,18 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
 }
 
 async function listArchive(env: Env): Promise<Response> {
+  if (!env.ARTICLES) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "Storage is not configured yet (KV binding 'ARTICLES' is missing). Please add a KV binding named ARTICLES in the Cloudflare dashboard.",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      }
+    );
+  }
   const list = await env.ARTICLES.list({ prefix: "article:" });
   const items: Array<{ date: string; title: string; topic: string }> = [];
 
@@ -210,6 +240,10 @@ async function listArchive(env: Env): Promise<Response> {
 }
 
 async function generateDailyArticle(env: Env) {
+  // If KV or AI bindings are not present yet, skip generation gracefully.
+  if (!env.ARTICLES || !env.AI) {
+    return;
+  }
   const now = new Date();
   const today = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const key = `article:${today}`;
