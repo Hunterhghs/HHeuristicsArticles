@@ -115,6 +115,31 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
     return new Response("Article missing.", { status: 500 });
   }
 
+  const recent = await getRecentArticles(env, 5);
+  const recentLinks = recent
+    .filter((item) => item.date !== stored.date)
+    .slice(0, 5)
+    .map(
+      (item) => `
+          <a class="recent-card" href="/article/${item.date}">
+            <div class="recent-date">${item.date}</div>
+            <div class="recent-title">${escapeHtml(item.title)}</div>
+            <div class="recent-topic">${escapeHtml(item.topic)}</div>
+          </a>`
+    )
+    .join("");
+
+  const recentSection =
+    recentLinks.length > 0
+      ? `
+    <section class="recent">
+      <h2 class="recent-heading">Recent insights</h2>
+      <div class="recent-grid">
+        ${recentLinks}
+      </div>
+    </section>`
+      : "";
+
   const html = `
 <!doctype html>
 <html lang="en">
@@ -131,12 +156,16 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
       }
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-        max-width: 760px;
-        margin: 2.5rem auto;
-        padding: 0 1.25rem 3rem;
+        margin: 0;
+        padding: 0;
         line-height: 1.7;
-        background: radial-gradient(circle at top, #111827, #020617 55%);
+        background: radial-gradient(circle at top, #020617, #020617 55%);
         color: #e5e7eb;
+      }
+      .page {
+        max-width: 960px;
+        margin: 2.5rem auto 3.5rem;
+        padding: 0 1.5rem 0;
       }
       header {
         margin-bottom: 2.5rem;
@@ -177,37 +206,73 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
       a:hover {
         text-decoration: underline;
       }
-      footer {
-        margin-top: 3rem;
-        font-size: 0.85rem;
-        opacity: 0.7;
-      }
       .nav {
         display: flex;
         gap: 1rem;
         margin-top: 0.5rem;
       }
+      .recent {
+        margin-top: 3rem;
+        padding-top: 2rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.35);
+      }
+      .recent-heading {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+      }
+      .recent-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+      }
+      .recent-card {
+        display: block;
+        padding: 0.9rem 1rem;
+        border-radius: 0.75rem;
+        background: radial-gradient(circle at top left, #111827, #020617);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        text-decoration: none;
+      }
+      .recent-card:hover {
+        border-color: #60a5fa;
+        background: radial-gradient(circle at top left, #1f2937, #020617);
+      }
+      .recent-date {
+        font-size: 0.8rem;
+        opacity: 0.7;
+        margin-bottom: 0.2rem;
+      }
+      .recent-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-bottom: 0.15rem;
+        color: #e5e7eb;
+      }
+      .recent-topic {
+        font-size: 0.85rem;
+        opacity: 0.8;
+      }
     </style>
   </head>
   <body>
-    <header>
-      <div class="site-title">${SITE_TITLE}</div>
-      <h1>${escapeHtml(stored.title)}</h1>
-      <div class="meta">
-        ${stored.date} · Topic: ${escapeHtml(stored.topic)}
-      </div>
-      <div class="nav">
-        <a href="/">Latest</a>
-        <a href="/archive">Archive (JSON)</a>
-        <a href="https://hheuristics.com">HHeuristics.com</a>
-      </div>
-    </header>
-    <main>
-      ${stored.bodyHtml}
-    </main>
-    <footer>
-      Generated daily using Cloudflare Workers AI. Content for informational purposes only and does not constitute investment or legal advice.
-    </footer>
+    <div class="page">
+      <header>
+        <div class="site-title">${SITE_TITLE}</div>
+        <h1>${escapeHtml(stored.title)}</h1>
+        <div class="meta">
+          ${stored.date} · Topic: ${escapeHtml(stored.topic)}
+        </div>
+        <div class="nav">
+          <a href="/">Latest</a>
+          <a href="/archive">Archive (JSON)</a>
+          <a href="https://hheuristics.com">HHeuristics.com</a>
+        </div>
+      </header>
+      <main>
+        ${stored.bodyHtml}
+        ${recentSection}
+      </main>
+    </div>
   </body>
 </html>`;
 
@@ -229,18 +294,7 @@ async function listArchive(env: Env): Promise<Response> {
       }
     );
   }
-  const list = await env.ARTICLES.list({ prefix: "article:" });
-  const items: Array<{ date: string; title: string; topic: string }> = [];
-
-  for (const key of list.keys) {
-    const stored = await env.ARTICLES.get<StoredArticle>(key.name, "json");
-    if (stored) {
-      items.push({ date: stored.date, title: stored.title, topic: stored.topic });
-    }
-  }
-
-  // Sort newest first
-  items.sort((a, b) => (a.date < b.date ? 1 : -1));
+  const items = await getRecentArticles(env, 50);
 
   return new Response(JSON.stringify(items, null, 2), {
     headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -298,19 +352,45 @@ Output:
   } as any);
 
   const raw = String(response.response ?? "");
+  const cleaned = sanitizeGeneratedHtml(raw);
   const firstLine = raw.split("\n").find((l) => l.trim().length > 0) ?? "Daily Insight";
   const title = firstLine.replace(/<[^>]*>/g, "").trim();
 
   const article: StoredArticle = {
     key,
     title: title || `Daily Insight – ${today}`,
-    bodyHtml: raw,
+    bodyHtml: cleaned,
     date: today,
     topic,
   };
 
   await env.ARTICLES.put(key, JSON.stringify(article));
   await env.ARTICLES.put("latest-key", key);
+}
+
+async function getRecentArticles(
+  env: Env,
+  limit: number
+): Promise<Array<{ date: string; title: string; topic: string }>> {
+  if (!env.ARTICLES) return [];
+  const list = await env.ARTICLES.list({ prefix: "article:" });
+  const items: Array<{ date: string; title: string; topic: string }> = [];
+
+  for (const key of list.keys) {
+    const stored = await env.ARTICLES.get<StoredArticle>(key.name, "json");
+    if (stored) {
+      items.push({ date: stored.date, title: stored.title, topic: stored.topic });
+    }
+  }
+
+  // Sort newest first
+  items.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return items.slice(0, limit);
+}
+
+function sanitizeGeneratedHtml(html: string): string {
+  // Strip stray asterisks that sometimes appear from markdown-style bullets.
+  return html.replace(/\*/g, "");
 }
 
 function escapeHtml(str: string): string {
