@@ -169,6 +169,10 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
         margin: 2.5rem auto 3.5rem;
         padding: 0 1.5rem 0;
       }
+      .article-body {
+        max-width: 720px;
+        margin: 0 auto;
+      }
       header {
         margin-bottom: 2.5rem;
       }
@@ -271,7 +275,9 @@ async function renderArticleByKey(env: Env, key: string): Promise<Response> {
         </div>
       </header>
       <main>
-        ${bodyHtml}
+        <div class="article-body">
+          ${bodyHtml}
+        </div>
         ${recentSection}
       </main>
     </div>
